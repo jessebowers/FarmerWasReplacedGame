@@ -86,7 +86,9 @@ def tree_is_adjacent():
     elif get_entity_type(West) == Entities.Tree:
         return True
 
-
+def wait_for_drone_completion():
+    while num_drones() > 1:
+        pass
 
 ###
 ### Pumpkins
@@ -150,7 +152,6 @@ def plant_sunflowers(water=True):
         all_petal_lengths[measure()] += [[get_pos_x(), get_pos_y()]]
         move_increment()
     
-    quick_print(all_petal_lengths)
     return  all_petal_lengths
 
 def harvest_sunflowers(all_petal_lengths):
@@ -160,7 +161,6 @@ def harvest_sunflowers(all_petal_lengths):
     cur_petals = len(all_petal_lengths)-1
     while cur_petals > 0:
         while len(all_petal_lengths[cur_petals]) > 0:
-            quick_print(all_petal_lengths[cur_petals])
             xy = all_petal_lengths[cur_petals].pop(0)
             move_to(xy[0], xy[1])
             if can_harvest():
@@ -327,7 +327,7 @@ def plantharvest_all_companions_grid(coords_list, companions_requested, companio
 ###
 
 ### Assumptions:
-### * You do not wrap around the edges of the map here.
+### * You do not wrap around the edges of the map in mazes.
 ### * Bottom left of maze is (0,0)
 ###
 
@@ -344,9 +344,9 @@ def make_maze(ndim=get_world_size()):
     use_item(Items.Weird_Substance, qty)
 
 def solve_maze(maze_dim, check_entity=False, current_xy=None):
-    #"""! @brief Solve a maze. Does so by preferring traveled route. Ties are broken in direction of treasure.
-    #@param check_entity At each step validate the plant the drone is standing on. This slows the drone slightly. Important when multiple drones are solving to stop all drones when a maze is finished.
-    #@return Number of steps needed to solve maze. None if maze was not solved.
+    #"""! @brief Solve a maze. Does so by preferring the least traveled route. Ties are broken in direction of treasure.
+    #@param check_entity At each step validate the plant the drone is standing on. This slows the drone slightly. Important when multiple drones are solving to start/stop drones appropriately.
+    #@return Number of steps needed to solve maze. None if maze was not solved by this drone.
     #"""
 
     if current_xy == None:
@@ -388,7 +388,7 @@ def solve_maze(maze_dim, check_entity=False, current_xy=None):
     return None
 
 def get_adj_key(x,y):
-    #"""! @brief Builds key for adjacency_dict by sorting a pair of coordinates. Sorting ensures bi-directinal support."""
+    #"""! @brief Builds key for adjacency_dict. Does so by sorting a pair of coordinates to ensure bi-directinal support."""
     if array_ineq(x,y) == -1:
         return (x,y)
     else:
@@ -432,7 +432,7 @@ def get_all_adj(current_xy, treasure_xy, maze_dim, nvisits, adjacency_dict):
     
     def adj_less_than(x,y):
         return sign(x['nvisits']-y['nvisits'])
-    sort(all_adj, adj_less_than)
+    list_sort(all_adj, adj_less_than)
     
     return all_adj
 
@@ -441,6 +441,7 @@ def move_once(current_xy, all_adj, nvisits, adjacency_dict):
     #"""! @brief Attempt to move in the most logical cardinal direction. If this fails, repeat in the next most appropriate direction. Updates nvisits, adjacency_dict appropriately.
     #@param all_adj List output from get_all_adj() describing each direction.
     #@return The new location of the drone.
+    #@todo Can we identify loops which are dead ends or other complex dead ends (i.e. this path splits but goes nowhere useful)?
     #"""
     
     did_move = False
@@ -452,13 +453,57 @@ def move_once(current_xy, all_adj, nvisits, adjacency_dict):
         adjacency_dict[min_val['adj_key']] = did_move
     
     nvisits[min_val['new_xy']] = dict_get(nvisits, min_val['new_xy'], 0) + 1
+    
+    # Identity dead ends
     if min_val['nvisits'] >= 1:
-        # Dead End
-        nvisits[current_xy] = LARGE_NUMBER
-        
+        if len(all_adj) == 0:
+            nvisits[current_xy] = LARGE_NUMBER
+        elif all_adj[0]['nvisits'] >= LARGE_NUMBER:
+            nvisits[current_xy] = LARGE_NUMBER
 
     return min_val['new_xy']
+
+###
+### Cacti
+###  
+
+
+def plant_cacti(x0, y0, x1, y1):
+    #"""! @brief Plant catci from (x0,y0) to (x1,y1) inclusive."""
+
+    def plant(kwargs):
+        plant_this(Entities.Cactus)
+    loop_rectangle(x0, y0, x1+1, y1+1, plant)
+
+def cacti_sort(x0, y0, x1, y1):
+    #"""! @brief When y0==y1, sorts cacti from (x0,y0) to (x1,y0). Identical operation if x0==x1 instead."""
     
+    # Make ordered list of coordinates from (x0,y0) to (x1,y1)
+    coordinates = []
+    if x0==x1:
+        directions = (South, North)
+        for i in range(y1-y0+1):
+            coordinates.append( (x0, y0+i) )
+    elif y0==y1:
+        directions = (West, East)
+        for i in range(x1-x0+1):
+            coordinates.append( (x0+i, y0) )
+    else:
+        return
+    
+    def compare_fun(x,i):
+        if i==1:
+            move_to(x[i][0], x[i][1])
+        else:
+            move(directions[1])
+        val0 = measure(directions[0])
+        val1 = measure()
+        return sign(val0-val1)
+        
+    def swap_fun(x,i):
+        swap(directions[0])
+    
+    bubble_sort(coordinates, compare_fun, swap_fun)
 
 ###
 ### General Looping
@@ -585,17 +630,30 @@ def list_move(x, ind0, ind1):
         ind1 += -1
     x.insert(ind1, val)
 
-def sort(x, compare_fun=less_than):
-    #"""! @brief Bubble sort x inplace. Bubble sort is fast enough for us, we sort only 4 items usually.
+def list_sort(x, compare_fun=less_than):
+    #"""! @brief Bubble sort x inplace.
     #@param compare_fun Inequality function(y,z) -> {-1,0,1}.  Something of form sign(y-z) gives ascending order.
+    #"""
+    
+    def compare_fun2(x,i):
+        return compare_fun(x[i-1], x[i])
+    def swap_fun(x,i):
+        list_move(x, i, i-1)
+    
+    bubble_sort(x, compare_fun2, swap_fun)
+
+def bubble_sort(x, compare_fun, swap_fun):
+    #"""! @brief Bubble sort x inplace.
+    #@param compare_fun function(x,i). Returns 1 if x[i-1]>x[i] for ascending.
+    #@param swap_fun function(x,i). Swaps elements x[i-1] and x[i] inplace.
     #"""
     
     while True:
         any_changes = False
         for i in range(len(x)):
             if i>0:
-              if compare_fun(x[i-1], x[i]) == 1:
-                  list_move(x, i, i-1)
+              if compare_fun(x,i) == 1:
+                  swap_fun(x, i)
                   any_changes = True
          
         if not any_changes:
@@ -662,14 +720,21 @@ def dict_copy(x):
         y[key] = x[key]
     return y
     
-
 ###
 ### Proper Utils
 ###
 
+def range_list(n):
+    #"""! @brief Make a list from 0 to n-1 inclusive"""
+    
+    x = []
+    for i in range(n):
+        x.append(i)
+    return x
+
 def tuple(x):
     #"""! @brief Cast x to tuple. Apparently no better way in this game..."""
-    # No better way to cast...
+    
     if len(x) == 0:
         return ()
     elif len(x) == 1:

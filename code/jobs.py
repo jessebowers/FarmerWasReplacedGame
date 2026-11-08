@@ -1,7 +1,7 @@
 import utils
 
 
-def job_sunflowers(word_size=6):
+def job_sunflowers(word_size=7):
     #"""! @brief Plant and harvest entire field with sunflowers"""
     set_world_size(word_size)
     clear()
@@ -139,3 +139,50 @@ def do_maze_v2(nitr=1, maze_dim=None, ndrones=None):
                 spawn_drone(drone_fun_follower, drone_pos[i])
             drone_fun_master()
 
+def job_catcti():
+  #"""! @brief Plant catci across whole map and sort.
+  #@todo If one drone is working and the other has finished, have the other drones help him.
+  #"""
+  clear()
+
+  def plant_east(y0):
+    utils.plant_cacti(0, y0, get_world_size()-1, y0)
+
+  def sort_east(y0):
+    utils.cacti_sort(0, y0, get_world_size()-1, y0)
+
+  def sort_north(x0):
+    utils.cacti_sort(x0, 0, x0, get_world_size()-1)
+
+  ys = utils.range_list(get_world_size())
+  while len(ys)>0:
+    if num_drones() == max_drones():
+        continue
+    idrone=spawn_drone(plant_east, ys[0])
+    if idrone != None:
+        ys.pop(0)
+  
+  utils.wait_for_drone_completion()
+  
+  ys = utils.range_list(get_world_size())
+  while len(ys)>0:
+    if num_drones() == max_drones():
+        continue
+    idrone=spawn_drone(sort_east, ys[0])
+    if idrone != None:
+        ys.pop(0)
+
+  utils.wait_for_drone_completion()
+  
+  xs = utils.range_list(get_world_size())
+  while len(xs)>0:
+    if num_drones() == max_drones():
+        continue
+    idrone=spawn_drone(sort_north, xs[0])
+    if idrone != None:
+        xs.pop(0)
+
+  utils.wait_for_drone_completion()
+
+  utils.move_to(get_world_size()//2,get_world_size()//2)
+  harvest()
