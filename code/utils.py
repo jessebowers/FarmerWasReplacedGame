@@ -1,9 +1,8 @@
 ###
-### Globals
+### Globals (note: comments in doxygen)
 ###
 
-LARGE_NUMBER = 999999
-NUM_SQUARES = get_world_size() * get_world_size()
+LARGE_NUMBER = 999999 # Proxy for Infinity 
 
 PLANT_GROUNDS = {
     Entities.Grass: [Grounds.Grassland, Grounds.Soil]
@@ -27,6 +26,10 @@ DIRECTION_TO_TUPLE = {
 ###
 
 def harvest_safe(default_entity=Entities.Pumpkin):
+    #"""! @brief Harvest if possible. Then replace the plant if possible.
+    #@param default_entity What to plant if not sure. Biggest known case is if original entity was a dead pumpkin.
+    #"""
+
     entity_type = get_entity_type()
     if not can_harvest():
         if entity_type == Entities.Dead_Pumpkin:
@@ -39,6 +42,9 @@ def harvest_safe(default_entity=Entities.Pumpkin):
             plant(entity_type)
     
 def do_water(repeat=False):
+    #"""! @brief Water the plants until <=1 saturation.
+    #@param repeat If false then water at most once even if more water is needed.
+    #"""
     if num_items(Items.Water) <= 0:
         return 0
     if get_water() > 0.75:
@@ -53,7 +59,7 @@ def do_water(repeat=False):
         return nwaters
 
 def plant_this(entity_type, ground_type=None):
-    # Plant entity in appropraite ground
+    #"""! @brief Plant entity in appropraite ground"""
     
     current_ground_type = get_ground_type()
     if ground_type == None:
@@ -69,6 +75,8 @@ def plant_this(entity_type, ground_type=None):
         plant(entity_type)
 
 def tree_is_adjacent():
+    #"""! @brief TRUE if there is a tree adjacent in a cardinal direction."""
+
     if get_entity_type(North) == Entities.Tree:
        return True
     elif get_entity_type(South) == Entities.Tree:
@@ -86,12 +94,18 @@ def tree_is_adjacent():
 
 
 def plant_pumpkin_patch_once(x0, y0, width, past_problem_locations=None, harvest_if_done=True, do_fertalize=False):
+    #"""! @brief Plant a width*width pumpkin patch with lower left corner at (x0,y0). If already planted, replants dead pumkins in area.
+    #@param past_problem_locations A list of (x,y). Only plant on these locations (ignore other locations). None indicates all locations in square. Empty set [] incidates no locations.
+    #@param harvest_if_done If all plants are ready to harvest, harvest them if TRUE.
+    #@return Returns modified past_problem_locations, locations which are not ready to harvest.
+    #"""
     
     def tmp_plant(kwargs):
         do_water()
         if get_entity_type() != Entities.Pumpkin:
             plant_this(Entities.Pumpkin, Grounds.Soil)
-            use_item(Items.Fertilizer)
+            if do_fertalize:
+                use_item(Items.Fertilizer)
             return [[kwargs['x'],kwargs['y']]]
         elif not can_harvest():
             return [[kwargs['x'],kwargs['y']]]
@@ -99,7 +113,7 @@ def plant_pumpkin_patch_once(x0, y0, width, past_problem_locations=None, harvest
             return []
     
     if past_problem_locations == None:
-        problem_locations = loop_pumpkin_patch(x0, y0, width, tmp_plant, [])
+        problem_locations = loop_rectangle(x0, y0, x0+width, y0+width, tmp_plant, [])
     else:
         problem_locations = []
         for xy in past_problem_locations:
@@ -114,31 +128,39 @@ def plant_pumpkin_patch_once(x0, y0, width, past_problem_locations=None, harvest
     
     return problem_locations
 
-def loop_pumpkin_patch(x0, y0, width, fun, out_init=None):
-    return loop_rectangle(x0, y0, x0+width, y0+width, fun, out_init)
 
 ###
 ### Sunflower
 ###
 
-def plant_sunflowers(water=False):
+
+def plant_sunflowers(water=True):
+    #"""! @brief Plant sunflowers everywhere.
+    #@return List describing the location of sunflowers of different lengths. Each index indicates a petal length. Within each index is a list of (x,y) positions of sunflowers with that petal length.
+    #@todo Limit this to a specified region rather than everywhere. A close grouping of 10 sunflowers is likely most efficient.
+    #"""
     all_petal_lengths = []
     for i in range(16): # Max petals is 15
         all_petal_lengths.append([])
     
-    for i in range(NUM_SQUARES):
+    for i in range(get_world_size()**2):
         plant_this(Entities.Sunflower, Grounds.Soil)
         if water:
             do_water()
         all_petal_lengths[measure()] += [[get_pos_x(), get_pos_y()]]
         move_increment()
-     
+    
+    quick_print(all_petal_lengths)
     return  all_petal_lengths
 
 def harvest_sunflowers(all_petal_lengths):
+    #"""! @brief Harvest sunfowers in decreasing order of petal length.
+    #@param See output of plant_sunflowers().
+    #"""
     cur_petals = len(all_petal_lengths)-1
     while cur_petals > 0:
         while len(all_petal_lengths[cur_petals]) > 0:
+            quick_print(all_petal_lengths[cur_petals])
             xy = all_petal_lengths[cur_petals].pop(0)
             move_to(xy[0], xy[1])
             if can_harvest():
@@ -152,11 +174,14 @@ def harvest_sunflowers(all_petal_lengths):
 ### Companions
 ###
 
-# companions_requested: Dict. Takes the tuple XY coordinates of a plant. Gives get_companion() of that plant's companion
-# companions_requester: Dict. Takes a tuple of XY coordinates. Gives a list of XY coordinates whose companion is in that cell.
+# companions_requested: Dict. Key: Tuple XY coordinates of a plant who wants a companion (a requester). Value: get_companion() of that plant at the location, indicating that plant's requested companion.
+# companions_requester: Dict. Key: Tuple of XY coordinates (of a requested). Value: A list of XY coordinates of every plant (requester) who wants a companion in that cell.
 # Note: Elements removed once the companion is planted or intended to be planted.
 
 def companion_add(xy_requester, companions_requested, companions_requester):
+    #"""! @brief Add a companion pair to companions_requested and companions_requester corresponding to the current location.
+    #@param xy_requester optional. Tuple indicaitng current location of the drone.
+    #"""
     if xy_requester == None:
         xy_requester = (get_pos_x(), get_pos_y())
     
@@ -168,6 +193,9 @@ def companion_add(xy_requester, companions_requested, companions_requester):
         
 
 def companion_remove(xy_requester, companions_requested, companions_requester):
+    #"""! @brief Remove a companion pair to companions_requested and companions_requester.
+    #@param xy_requester XY tuple of plant who wants a companion.
+    #"""
     if xy_requester not in companions_requester:
         return
     xy_requested = companions_requester[xy_requester][1]
@@ -181,6 +209,12 @@ def companion_remove(xy_requester, companions_requested, companions_requester):
     companions_requester.pop(xy_requester)
 
 def choose_entity(xy, companions_requested, companions_requester):
+    #"""! @brief Decide the best plant to place in a location. Chooses companion if possible, otherwise randomly among companionable plants.
+    #@param xy Tuple location of where we want to plant.
+    #@return chosen_entity: What we want to plant. xy_requester: If this plant is a companion, the xy coordinates of the plant who wanted this companion.
+    #@todo If there are multiple competing requesters, choose the most popular request.
+    #"""
+
     if xy == None:
         xy = (get_pos_x(), get_pos_y())
     
@@ -216,7 +250,12 @@ def choose_entity(xy, companions_requested, companions_requester):
     return {'chosen_entity': chosen_entity, 'xy_requester': xy_requester_fn}
 
 def plant_all_companions_chain(is_not_planted, companions_requested, companions_requester):
-    # Each time we plant, next plant the corresponding companion if possible
+    #"""! @brief Plant once at a time. Each time we plant, next plant the corresponding companion if possible.
+    #@param is_not_planted Dictionary containing every location needing planting. Mutated and emptied during operation. Key: XY Tuple. Values are not used.
+    #@return Length two list. First element are how many plants were planted without companions. Second indicates how many plants were planted with companions
+    #@todo Make useful for multiple drones. Harvest on arrival if possible. If not ready to harvest, then move to another location. Allow different starting locations.
+    #"""
+    # 
     match_cnts = [0,0]
     
     xy_requester_last = None
@@ -257,8 +296,10 @@ def plant_all_companions_chain(is_not_planted, companions_requested, companions_
     return match_cnts
 
 def plantharvest_all_companions_grid(coords_list, companions_requested, companions_requester):
-    # Go through each coordinate preferring companion if possible. Faster movement, worse companion matching vs chain
-    # Harvests if possible too
+    #"""! @brief Go through each coordinate. Plant preferring companion if possible. Compared to plant_all_companions_chain(), this sacrifices companion efficiency for drone speed. Would not work well for multiple drones since globals are not shared.
+    #@param coords_list A list of (x,y) tuples of every location we want to visit.
+    #@return Length two list. First element are how many plants were planted without companions. Second indicates how many plants were planted with companions
+    #"""
     
     match_cnts = [0,0]
     
@@ -284,12 +325,15 @@ def plantharvest_all_companions_grid(coords_list, companions_requested, companio
 ###
 ### Maze
 ###
+
 ### Assumptions:
 ### * You do not wrap around the edges of the map here.
 ### * Bottom left of maze is (0,0)
 ###
 
 def make_maze(ndim=get_world_size()):
+    #"""! @brief Make an ndim*ndim maze if possible"""
+
     if ndim > get_world_size():
         ndim = get_world_size()
     
@@ -300,6 +344,11 @@ def make_maze(ndim=get_world_size()):
     use_item(Items.Weird_Substance, qty)
 
 def solve_maze(maze_dim, check_entity=False, current_xy=None):
+    #"""! @brief Solve a maze. Does so by preferring traveled route. Ties are broken in direction of treasure.
+    #@param check_entity At each step validate the plant the drone is standing on. This slows the drone slightly. Important when multiple drones are solving to stop all drones when a maze is finished.
+    #@return Number of steps needed to solve maze. None if maze was not solved.
+    #"""
+
     if current_xy == None:
         current_xy = (get_pos_x(), get_pos_y())
     nvisits = {current_xy: 1}
@@ -339,12 +388,24 @@ def solve_maze(maze_dim, check_entity=False, current_xy=None):
     return None
 
 def get_adj_key(x,y):
+    #"""! @brief Builds key for adjacency_dict by sorting a pair of coordinates. Sorting ensures bi-directinal support."""
     if array_ineq(x,y) == -1:
         return (x,y)
     else:
         return (y,x)
 
 def get_all_adj(current_xy, treasure_xy, maze_dim, nvisits, adjacency_dict):
+    #"""! @brief From the current location, get information on each cardinal direction.
+    #@param current_xy Tuple of current drone location
+    #@param treasure_xy Tuple of treasure location
+    #@param maze_dim Width/length of maze.
+    #@param nvisits Dictionary. Key: XY tuple. Value: Number of times this drone visited that position.
+    #@param adjacency_dict Dictonary. Key: Pair of XY coordinates (see get_adj_key). Value: Is travel between these coordinates possible? Bi-directional.
+    #@return A list of length 4 corresponding to each cardinal direction. Sorted from smallest nvisits loss to largest. Each element is a dictonary. 
+    #
+    #nvisits is the most important element of each dictionary. It is principally the number of times the corresponding location was visited, but it is modified in the following ways. 1) If a node should not be visited (e.g. impossible to visit) it's set to LARGE_NUMBER (~infinity). 2) For tiebreaking purposes we add two values. a) The distance from coordinate to treasure prefers coordinates towards the treasuree. b) A random value permits different drones to take different paths. Addends are combined in a way that we effectively sort on tuple (is LARGE_NUMBER, raw nvisits, distance, random).
+    #"""
+
     all_adj = [
         {'direction': North, 'new_xy': tuple(array_add(current_xy, DIRECTION_TO_TUPLE[North]))}
         , {'direction': South, 'new_xy': tuple(array_add(current_xy, DIRECTION_TO_TUPLE[South]))}
@@ -377,6 +438,10 @@ def get_all_adj(current_xy, treasure_xy, maze_dim, nvisits, adjacency_dict):
 
 
 def move_once(current_xy, all_adj, nvisits, adjacency_dict):
+    #"""! @brief Attempt to move in the most logical cardinal direction. If this fails, repeat in the next most appropriate direction. Updates nvisits, adjacency_dict appropriately.
+    #@param all_adj List output from get_all_adj() describing each direction.
+    #@return The new location of the drone.
+    #"""
     
     did_move = False
     while not did_move:
@@ -400,6 +465,12 @@ def move_once(current_xy, all_adj, nvisits, adjacency_dict):
 ###
 
 def loop_coords(coords_list, fun, out_init=None):
+    #"""! @brief For each xy in coords_list, apply fun().
+    #@param List of xy tuples.
+    #@param fun Function that expects a single dictionary argument: {'x': , 'y': , 'out': current rolling value of out_init}. 
+    #@param out_init If not None, each value of fun() will be added to this. May mutate.
+    #@return The final value of out_init.
+    #"""
     xy0 = None
     for xy1 in coords_list:
         move_to(xy1[0], xy1[1], xy0)
@@ -412,6 +483,9 @@ def loop_coords(coords_list, fun, out_init=None):
         
 
 def loop_rectangle(x0, y0, x1, y1, fun, out_init=None):
+    #"""! @brief Apply fun to each coordinate in rectanglular range (x0,y0) to (x1-1, y1-1) inclusive.
+    #@param host @copydoc loop_coords(fun)
+    #"""
     for iy in range(y1-y0):
         move_to(x0, y0+iy)
         for ix in range(x1-x0):
@@ -429,8 +503,9 @@ def loop_rectangle(x0, y0, x1, y1, fun, out_init=None):
     
 
 def move_increment():
-    # Move drone once.
-    # Returns 1 if looped map
+    #"""! @brief Moves drone once. Repeated use moves a drone first East (circumnavigating) and then North (eventually circumnavigating).
+    #@return Returns 1 if drone has now returned to (0,0).
+    #"""
     if get_pos_x() == get_world_size()-1:
         move(North)
         move(East)
@@ -443,6 +518,9 @@ def move_increment():
         return 0  
 
 def move_to(x,y, xy0=None, check=False):
+    #"""! @brief Moves a drone to (x,y) following shortest path.
+    #@param xy0 Optional xy tuple of the drone's current location.
+    #"""
     dirs_x = {-1: West, 1: East, 0: East}
     dirs_y = {-1: South, 1: North, 0: North}
     
@@ -467,6 +545,9 @@ def move_to(x,y, xy0=None, check=False):
             print("Error Y.")
 
 def shortest_distance(x_from, x_to):
+    #"""! @brief Along the x-axis, find the shortest distance from x_from to x_to. (symmetric for Y)
+    #@return +3 Incidates that x_to is 3 spaces East. -2 indicates x_to is two spaces West.
+    #"""
     if x_from == x_to:
         return 0
     elif x_from > x_to:
@@ -480,12 +561,14 @@ def shortest_distance(x_from, x_to):
     else:
         return -dist_backward
 
+
 ###
 ### Arrays
 ###
 
 
 def which_min(x):
+    #"""! @brief Find the index of the minimum value of X."""
     min_ind = 0
     min_val = x[min_ind]
     for ind in range(x):
@@ -496,13 +579,16 @@ def which_min(x):
     return {'index': min_ind, 'value': min_val}
 
 def list_move(x, ind0, ind1):
+    #"""! @brief From an element in x from ind0 to ind1."""
     val = x.pop(ind0)
     if ind0 < ind1:
         ind1 += -1
     x.insert(ind1, val)
 
 def sort(x, compare_fun=less_than):
-    # Bubble sort of values
+    #"""! @brief Bubble sort x inplace. Bubble sort is fast enough for us, we sort only 4 items usually.
+    #@param compare_fun Inequality function(y,z) -> {-1,0,1}.  Something of form sign(y-z) gives ascending order.
+    #"""
     
     while True:
         any_changes = False
@@ -520,6 +606,7 @@ def sort(x, compare_fun=less_than):
     return None
 
 def array_ineq(x,y):
+    #"""! @brief Inequality between two vectors."""
     ineq = 0
     for i in range(len(x)):
         if x[i] < y[i]:
@@ -532,16 +619,19 @@ def array_ineq(x,y):
     return ineq
 
 def array_add(x,y):
+    #"""! @brief Add two vectors"""
     def add(x,y):
         return [x+y]
     return arrays_apply(x, y, add, [])
     
 def dist_manhattan(x,y):
+    #"""! @brief Manhattan (L1) distance between two vectors"""
     def dist(x,y):
         return abs(x-y)
     return arrays_apply(x, y, dist, 0)
 
 def arrays_apply(x, y, fun, init):
+    #"""! @brief Return $init + sum_i fun(x[i], y[i])$"""
     for i in range(len(x)):
         init += fun(x[i], y[i])
     return(init)
@@ -552,19 +642,21 @@ def arrays_apply(x, y, fun, init):
 ###
 
 def dict_get(x, key, default):
+    #"""! @brief Same as dictionary.get() method in Python. Safely extracts a value from a dictionary."""
     if key in x:
         return x[key]
     else:
         return default
 
 def dict_first_key(x):
+    #"""! @brief Get a single key element from a dictionary."""
     key = None
     for key in x:
         break
     return key
 
 def dict_copy(x):
-    # Shallow copy
+    #"""! @brief Same as dictionary.copy() method in Python. Makes a shallow copy."""
     y = {}
     for key in x:
         y[key] = x[key]
@@ -576,6 +668,7 @@ def dict_copy(x):
 ###
 
 def tuple(x):
+    #"""! @brief Cast x to tuple. Apparently no better way in this game..."""
     # No better way to cast...
     if len(x) == 0:
         return ()
@@ -592,6 +685,7 @@ def less_than(x,y):
     return sign(x-y)
     
 def sign(x):
+    #"""! @brief Is x positive or negative?"""
     if x==0:
         return 0
     elif x>0:

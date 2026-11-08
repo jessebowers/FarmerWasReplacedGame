@@ -1,47 +1,17 @@
 import utils
 
 
-def mixed_crop_v1():
-    clear()
-    
-    for itr in range(utils.NUM_SQUARES):
-        if itr < 3*get_world_size():
-            entity_type = Entities.Pumpkin
-        elif itr % utils.NUM_SQUARES <= 0.8*utils.NUM_SQUARES:
-            if utils.tree_is_adjacent():
-                entity_type = Entities.Grass
-            else:
-                entity_type = Entities.Tree
-        else:
-            entity_type = Entities.Carrot
-        
-        utils.plant_this(entity_type)
-        if entity_type != Entities.Grass:
-            utils.do_water()
-        utils.move_increment()
-    
-    while True:
-        utils.harvest_safe()
-        utils.move_increment()
-
-def job_sunflowers():
+def job_sunflowers(word_size=6):
+    #"""! @brief Plant and harvest entire field with sunflowers"""
+    set_world_size(word_size)
     clear()
     while True:
         all_petal_lengths=utils.plant_sunflowers()
         utils.harvest_sunflowers(all_petal_lengths)
 
-def plant_harvest_pumpkin_patch(x0, y0, width):
-    
-    problem_locations = None
-    while True:
-        problem_locations = plant_pumpkin_patch_once(x0, y0, width, problem_locations)
-        if len(problem_locations) == 0:
-            break
-    
-    move_to(x0, y0)
-    harvest()
-
 def mixed_crop_v2():
+    #"""! @brief Plant and harvest a field of [Grass, Carrot, Tree, Pumpkin]. Operates with a single drone which after planting, always tries to sow that plant's companion next."""
+    
     # Set Up Variables
     coords_list_master = []
     coords_dict_master = {}
@@ -79,6 +49,8 @@ def mixed_crop_v2():
 
 
 def mixed_crop_v3():
+    #"""! @brief Plant and harvest a field of [Grass, Carrot, Tree, Pumpkin]. Operates with a single drone which loops through a grid preferring compansions where possible."""
+    
     # Set Up Variables
     coords_list_master = []
     coords_dict_master = {}
@@ -101,27 +73,9 @@ def mixed_crop_v3():
         companions_requested = {}
         match_cnts = utils.plantharvest_all_companions_grid(coords_list_master, companions_requested, companions_requester)
         quick_print(match_cnts)
-        
-def get_weird_substance():
-    clear()
-    do_fertalize = True
-    while True:
-        utils.harvest_safe()
-        if do_fertalize:
-            fertalize_this()
-        if utils.move_increment()==1:
-            do_fertalize = not do_fertalize
    
-def do_maze_v1(nitr=1, maze_dim=None):
-    if maze_dim == None:
-         maze_dim = get_world_size()
-    for itr in range(nitr):
-        utils.make_maze(maze_dim)    
-        nsteps = utils.solve_maze(maze_dim, (get_pos_x(), get_pos_y()))
-        quick_print(nsteps)
-  
-        
 def mixed_crop_v4():
+    #"""! @brief Plant and harvest a field of [Grass, Carrot, Tree, Pumpkin]. Operates with exactly two drones which work in a grid pattern."""
     
     def pumpkin_fun():
         pumpkin_problems = None
@@ -150,6 +104,7 @@ def mixed_crop_v4():
     mixed_fun()
 
 def do_maze_v2(nitr=1, maze_dim=None, ndrones=None):
+    #"""! @brief Generate and solve a maze. Works with as many drones as possible."""
     if maze_dim == None:
          maze_dim = get_world_size()
     
@@ -176,7 +131,10 @@ def do_maze_v2(nitr=1, maze_dim=None, ndrones=None):
             drone_fun_master()
         else:
             drone_pos = [(0,0), (maze_dim-1, maze_dim-1), (0, maze_dim-1), (maze_dim-1, 0)
-                       , (maze_dim//2, maze_dim//6), (maze_dim//2, (5/6*maze_dim)//1), (maze_dim//6, maze_dim//2), ((5/6*maze_dim)//1, maze_dim//2)]
+                       , ((1/2*maze_dim)//1, (1/4*maze_dim)//1), ((1/4*maze_dim)//1, (1/2*maze_dim)//1), ((1/2*maze_dim)//1, (3/4*maze_dim)//1), ((3/4*maze_dim)//1, (1/2*maze_dim)//1)
+                       , ((1/5*maze_dim)//1, (1/5*maze_dim)//1), ((4/5*maze_dim)//1, (1/5*maze_dim)//1), ((1/5*maze_dim)//1, (4/5*maze_dim)//1), ((4/5*maze_dim)//1, (4/5*maze_dim)//1)
+                       , ((1/2*maze_dim)//1, 0), (0, (1/2*maze_dim)//1), ((1/2*maze_dim)//1, maze_dim-1), (maze_dim-1, (1/2*maze_dim)//1)
+                       ]
             for i in range(min(ndrones-1, len(drone_pos))):
                 spawn_drone(drone_fun_follower, drone_pos[i])
             drone_fun_master()
