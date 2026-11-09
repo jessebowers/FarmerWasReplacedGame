@@ -506,6 +506,40 @@ def cacti_sort(x0, y0, x1, y1):
     bubble_sort(coordinates, compare_fun, swap_fun)
 
 ###
+### Dinosaurs
+###
+
+def get_apple(xy):
+    #"""! @brief Take a slow and roundabout path to retrieve an apple. This should usually avoid tripping over one's tail. Takes one loop of the area to collect one apple.
+    #@return The coordinates of the next apple. None on failure.
+    #"""
+    
+    # Move to apple
+    direction_info_zy = edge_cc_direction(xy)
+    if direction_info_zy != None:
+        if not circle_to(xy):
+            return None
+        return measure()
+    else:
+        if not circle_to((0,xy[1])):
+            return None
+        if not move_n(East, xy[0]):
+            return None
+    
+        new_apple_xy = measure()
+        
+        # Return to Southern border
+        xy0 = [xy[0],xy[1]]
+        while xy0[1]>0:
+            if (xy0[0] == new_apple_xy[0]) and (xy0[1] == new_apple_xy[1]):
+                new_apple_xy = measure()
+            if not move(South):
+                return None
+            xy0[1] += -1
+        
+        return new_apple_xy
+
+###
 ### General Looping
 ###
 
@@ -606,6 +640,48 @@ def shortest_distance(x_from, x_to):
     else:
         return -dist_backward
 
+def edge_cc_direction(xy):
+    #"""! @brief If tuple xy is on the edge of the map, return the counter-clockwise direction."""
+    
+    if (xy[0] == 0) and (xy[1] == 0):
+        return East
+    elif xy[0] == 0:
+        return South
+    elif xy[1] == get_world_size()-1:
+        return West
+    elif xy[0] == get_world_size()-1:
+        return North
+    elif xy[1] == 0:
+        return East
+    else:
+        return None
+
+def move_n(direction, n):
+    #"""! @brief Move this drone n places is the stated direction"""
+    success = 1
+    for i in range(n):
+        if not move(direction):
+            success=0
+    return success
+
+def circle_to(xy, xy0=None):
+    #"""! @brief Move counterclockwise on the edge of the map until you reach xy
+    #@return 1 if successful. 0 otherwise.
+    #"""
+    
+    if xy0 == None:
+        xy0 = (get_pos_x(), get_pos_y())
+    
+    if xy0 == xy:
+        return 1
+    
+    while xy0 != xy:
+        direction = edge_cc_direction(xy0)
+        if not move(direction):
+            return 0
+        xy0 = array_add(xy0, DIRECTION_TO_TUPLE[direction])
+    
+    return 1
 
 ###
 ### Arrays

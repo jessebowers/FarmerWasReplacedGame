@@ -186,3 +186,17 @@ def job_catcti():
 
   utils.move_to(get_world_size()//2,get_world_size()//2)
   harvest()
+
+def job_dinosaurs(nitr=1):
+    #"""! @brief Collect apples for our dinosaurs in a roundabout fashion. Takes one full loop of area per apple."""
+    for i in range(nitr):
+        clear()
+        change_hat(Hats.Dinosaur_Hat)
+        new_apple_xy = measure()
+        while True:
+            new_apple_xy = utils.get_apple(new_apple_xy)
+            if new_apple_xy == None:
+                break
+
+        move(East) # In case last position is apple, try to capture it
+        change_hat(Hats.Brown_Hat) # Cash in
