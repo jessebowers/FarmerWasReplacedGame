@@ -86,9 +86,14 @@ def tree_is_adjacent():
     elif get_entity_type(West) == Entities.Tree:
         return True
 
-def wait_for_drone_completion():
-    while num_drones() > 1:
-        pass
+def wait_for_drone_completion(drones=None):
+    #"""! @brief Wait until all spawned drones have finished thier tasks"""
+    if drones != None:
+        for idrone in drones:
+            wait_for(idrone)
+    else:
+        while num_drones() > 1:
+            pass
 
 ###
 ### Pumpkins
@@ -214,6 +219,8 @@ def choose_entity(xy, companions_requested, companions_requester):
     #@return chosen_entity: What we want to plant. xy_requester: If this plant is a companion, the xy coordinates of the plant who wanted this companion.
     #@todo If there are multiple competing requesters, choose the most popular request.
     #"""
+    
+    possiblities = [Entities.Grass, Entities.Carrot, Entities.Tree]
 
     if xy == None:
         xy = (get_pos_x(), get_pos_y())
@@ -237,7 +244,6 @@ def choose_entity(xy, companions_requested, companions_requester):
     
     # Choose randomly
     if chosen_entity == None:
-        possiblities = [Entities.Grass, Entities.Carrot, Entities.Tree]
         chosen_entity = possiblities[(random() * len(possiblities)) // 1]
     
     if chosen_entity == Entities.Tree:
@@ -245,55 +251,65 @@ def choose_entity(xy, companions_requested, companions_requester):
             tree_is_adjacent_cache = tree_is_adjacent()
         if tree_is_adjacent_cache:
             possiblities.pop()
-            hosen_entity = possiblities[(random() * len(possiblities)) // 1]
+            chosen_entity = possiblities[(random() * len(possiblities)) // 1]
                 
     return {'chosen_entity': chosen_entity, 'xy_requester': xy_requester_fn}
 
-def plant_all_companions_chain(is_not_planted, companions_requested, companions_requester):
-    #"""! @brief Plant once at a time. Each time we plant, next plant the corresponding companion if possible.
-    #@param is_not_planted Dictionary containing every location needing planting. Mutated and emptied during operation. Key: XY Tuple. Values are not used.
+def plant_companions_chain(xy, possible_xy):
+    #"""! @brief Plant once at a time. Each time we plant, next plant the corresponding companion if possible. Stop once we cannot plant companion
+    #@param xy is tuple of current drone coordinates.
+    #@param possible_xy Dictionary containing every location eligible for planting. Key: XY Tuple. Values are not used.
+    #@todo Change break criteria `match_cnts[0] > 1`. If we can't do a tree with can continue the chain with the current plant. If there is no valid companion then we cannot continue.
     #@return Length two list. First element are how many plants were planted without companions. Second indicates how many plants were planted with companions
-    #@todo Make useful for multiple drones. Harvest on arrival if possible. If not ready to harvest, then move to another location. Allow different starting locations.
     #"""
-    # 
+    
     match_cnts = [0,0]
     
-    xy_requester_last = None
-    while len(is_not_planted) > 0:
-        xy = None
-        if xy_requester_last != None:
-            if companions_requester[xy_requester_last][1] in is_not_planted:
-                xy = companions_requester[xy_requester_last][1]
-        if xy == None:
-            if xy_requester_last == None:
-                possible_xy = [dict_first_key(is_not_planted)]
-            else:
-                possible_xy = [
-                        ( (xy_requester_last[0]+1) % get_world_size(), (xy_requester_last[1]) )
-                        , ( (xy_requester_last[0]), (xy_requester_last[1]+1) % get_world_size() )
-                        , ( (xy_requester_last[0]-1) % get_world_size(), (xy_requester_last[1]) )
-                        , ( (xy_requester_last[0]), (xy_requester_last[1]-1) % get_world_size() )
-                        , dict_first_key(is_not_planted)
-                    ]
-            
-            for ixy in possible_xy:
-                if ixy in is_not_planted:
-                    xy = ixy
+    if xy == None:
+        xy = (get_pos_x(), get_pos_y())
+    if xy not in possible_xy:
+        return match_cnts
+    
+    def try_harvest():
+        if can_harvest():
+            harvest()
+            return 1
+        elif get_entity_type() == None:
+            return 1
+        else:
+            return 0
+    
+    
+    xy_new = xy
+    companions_requester = {}
+    companions_requested = {}
+    while True:
+        if not try_harvest():
+            break
+         
+        # Plant
+        chosen_entity = choose_entity(xy_new, companions_requested, companions_requester)
+        plant_this(chosen_entity['chosen_entity'])
+        do_water()
         
-        move_to(xy[0], xy[1])
-        chosen_entity = choose_entity(xy, companions_requested, companions_requester)
+        # Increment variables
+        # Always build companions from scratch due to multi-drone race conditions
         if chosen_entity['xy_requester'] != None:
             match_cnts[1] += 1
         else:
             match_cnts[0] += 1
-                
-        plant_this(chosen_entity['chosen_entity'])
-        do_water()
-        xy_requester_last = xy
-        companion_add(xy, companions_requested, companions_requester)
-        is_not_planted.pop(xy)
+        companions_requester = {}
+        companions_requested = {}
+        companion_add(xy_new, companions_requested, companions_requester)
+        xy_new = companions_requester[xy_new][1]
+
+        # Move to new location
+        if xy_new not in possible_xy:
+            break
+        move_to(xy_new[0], xy_new[1])
         
     return match_cnts
+
 
 def plantharvest_all_companions_grid(coords_list, companions_requested, companions_requester):
     #"""! @brief Go through each coordinate. Plant preferring companion if possible. Compared to plant_all_companions_chain(), this sacrifices companion efficiency for drone speed. Would not work well for multiple drones since globals are not shared.
@@ -510,7 +526,7 @@ def cacti_sort(x0, y0, x1, y1):
 ###
 
 def get_apple(xy, tail_length, snake_start):
-    #"""! @brief Take a slow and roundabout path to retrieve an apple. This should usually avoid tripping over one's tail. Takes one loop of the area to collect one apple.
+    #"""! @brief Take a slow and roundabout path to retrieve an apple. This should usually avoid tripping over one's tail.
     #@param tail_length A list containing a single integer. Specified the tail length (number of apples picked up so far). Both an input and output argument, mutates.
     #@param snake_start A list containing a single integer. Starts [0]. Flip to [1] once we use snake_direction(). Both an input and output argument, mutates.
     #@todo 1) Terminates early if on the last loop of edge_cc_direction() it touches an extra apple on its return trip southward. Fix. 2) Improve speed by more direct pathing under smaller tail sizes.
