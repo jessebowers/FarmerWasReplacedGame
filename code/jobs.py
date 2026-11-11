@@ -191,10 +191,12 @@ def job_dinosaurs(nitr=1):
     #"""! @brief Collect apples for our dinosaurs in a roundabout fashion. Takes one full loop of area per apple."""
     for i in range(nitr):
         clear()
+        tail_length = [1]
+        snake_start = [0]
         change_hat(Hats.Dinosaur_Hat)
         new_apple_xy = measure()
         while True:
-            new_apple_xy = utils.get_apple(new_apple_xy)
+            new_apple_xy = utils.get_apple(new_apple_xy, tail_length, snake_start)
             if new_apple_xy == None:
                 break
 

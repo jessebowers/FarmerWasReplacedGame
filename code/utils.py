@@ -509,35 +509,61 @@ def cacti_sort(x0, y0, x1, y1):
 ### Dinosaurs
 ###
 
-def get_apple(xy):
+def get_apple(xy, tail_length, snake_start):
     #"""! @brief Take a slow and roundabout path to retrieve an apple. This should usually avoid tripping over one's tail. Takes one loop of the area to collect one apple.
+    #@param tail_length A list containing a single integer. Specified the tail length (number of apples picked up so far). Both an input and output argument, mutates.
+    #@param snake_start A list containing a single integer. Starts [0]. Flip to [1] once we use snake_direction(). Both an input and output argument, mutates.
+    #@todo 1) Terminates early if on the last loop of edge_cc_direction() it touches an extra apple on its return trip southward. Fix. 2) Improve speed by more direct pathing under smaller tail sizes.
     #@return The coordinates of the next apple. None on failure.
     #"""
     
-    # Move to apple
-    direction_info_zy = edge_cc_direction(xy)
+    world_size_cache = get_world_size()
+    
+    path_fun = None
+    if tail_length[0] < 4*world_size_cache-5-1: # Extra '-1' in case an extra apple is found going south.
+        path_fun = edge_cc_direction
+    else:
+        path_fun = snake_direction
+        if snake_start[0] != 1:
+            snake_start[0] = 1
+            
+            # Circle fully CC before starting
+            if (xy[1]>0) or ((xy[0] == 0) and (xy[1] == 0)):
+                path_to((1,0), edge_cc_direction)
+            path_to((0,0), edge_cc_direction)
+    
+    direction_info_zy = path_fun(xy)
     if direction_info_zy != None:
-        if not circle_to(xy):
+        # Move along path to XY
+        if not path_to(xy, path_fun):
             return None
+        tail_length[0] += 1
         return measure()
     else:
-        if not circle_to((0,xy[1])):
+        # Assumed: (path_fun==edge_cc_direction) and (direction_info_zy==None)
+        # Move West of XY and then cut over
+        
+        if not path_to((0,xy[1]), path_fun):
             return None
         if not move_n(East, xy[0]):
             return None
     
         new_apple_xy = measure()
+        tail_length[0] += 1
         
         # Return to Southern border
         xy0 = [xy[0],xy[1]]
         while xy0[1]>0:
             if (xy0[0] == new_apple_xy[0]) and (xy0[1] == new_apple_xy[1]):
                 new_apple_xy = measure()
+                tail_length[0] += 1
             if not move(South):
                 return None
             xy0[1] += -1
         
         return new_apple_xy
+        
+        
 
 ###
 ### General Looping
@@ -656,6 +682,30 @@ def edge_cc_direction(xy):
     else:
         return None
 
+def snake_direction(xy):
+    #"""! @brief Direction to loop entire map without crossing self or circumnavigating. Approach: Southern border goes east. Above snakes north/south. Assumes dimensions are even."""
+    
+    world_size_cache = get_world_size()
+    
+    if (xy[0]==world_size_cache-1) and (xy[1]==0):
+        return North
+    elif (xy[0]==world_size_cache-1) and (xy[1]==1):
+        return North
+    elif (xy[0]==0) and (xy[1]==1):
+        return South
+    elif (xy[1] == 0):
+        return East
+    elif (world_size_cache-xy[0]) % 2 == 1:
+        if xy[1] == world_size_cache-1:
+            return West
+        else:
+            return North
+    else: # world_size_cache-xy[0] % 2 == 0:
+        if xy[1] == 1:
+            return West
+        else:
+            return South
+
 def move_n(direction, n):
     #"""! @brief Move this drone n places is the stated direction"""
     success = 1
@@ -664,8 +714,9 @@ def move_n(direction, n):
             success=0
     return success
 
-def circle_to(xy, xy0=None):
-    #"""! @brief Move counterclockwise on the edge of the map until you reach xy
+def path_to(xy, path_fun, xy0=None):
+    #"""! @brief Follow path_fun until we reach xy.
+    #@param Takes an xy tuple and gives a direction to move.
     #@return 1 if successful. 0 otherwise.
     #"""
     
@@ -676,8 +727,10 @@ def circle_to(xy, xy0=None):
         return 1
     
     while xy0 != xy:
-        direction = edge_cc_direction(xy0)
-        if not move(direction):
+        direction = path_fun(xy0)
+        if direction == None:
+            return 0
+        elif not move(direction):
             return 0
         xy0 = array_add(xy0, DIRECTION_TO_TUPLE[direction])
     
