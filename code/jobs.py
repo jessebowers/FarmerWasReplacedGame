@@ -1,11 +1,11 @@
 import utils
 
 
-def job_sunflowers(word_size=7):
+def job_sunflowers(nitr=100, word_size=7):
     #"""! @brief Plant and harvest entire field with sunflowers"""
     set_world_size(word_size)
     clear()
-    while True:
+    for i in range(nitr):
         all_petal_lengths=utils.plant_sunflowers()
         utils.harvest_sunflowers(all_petal_lengths)
 
@@ -37,6 +37,7 @@ def mixed_crop_v3():
 
 def do_maze_v2(nitr=1, maze_dim=None, ndrones=None):
     #"""! @brief Generate and solve a maze. Works with as many drones as possible."""
+    clear()
     if maze_dim == None:
          maze_dim = get_world_size()
     
@@ -140,11 +141,12 @@ def mixed_crop_v5():
         utils.move_to((random()*get_world_size())//1, (random()*get_world_size())//1)
         
         while True:
-           match_cnts = utils.plant_companions_chain(None, possible_xy)
-           utils.move_increment()
-           
-           # Sometimes drones hit an error due to race conditions when two drones plant the same place. Try making a new drone just in case.
-           spawn_drone(mixed_fun, possible_xy)
+            match_cnts = utils.plant_companions_chain(None, possible_xy)
+            utils.move_increment()
+          
+            # Sometimes drones hit an error due to race conditions when two drones plant the same place. Try making a new drone just in case.
+            if num_drones() < max_drones():
+                spawn_drone(mixed_fun, possible_xy)
     
     
     clear()
