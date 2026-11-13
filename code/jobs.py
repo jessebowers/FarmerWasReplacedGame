@@ -35,7 +35,7 @@ def mixed_crop_v3():
         match_cnts = utils.plantharvest_all_companions_grid(coords_list_master, companions_requested, companions_requester)
         quick_print(match_cnts)
 
-def do_maze_v2(nitr=1, maze_dim=None, ndrones=None):
+def do_maze_v2(nitr=1, maze_dim=None, ndrones=None, max_steps=utils.LARGE_NUMBER):
     #"""! @brief Generate and solve a maze. Works with as many drones as possible."""
     clear()
     if maze_dim == None:
@@ -44,17 +44,20 @@ def do_maze_v2(nitr=1, maze_dim=None, ndrones=None):
     if ndrones == None:
         ndrones = max_drones()
     
+    drone_pos = utils.dispersed_locations(ndrones, maze_dim)
+    
     def drone_fun_master():
         change_hat(Hats.Wizard_Hat)
         utils.move_to(0,0)
-        utils.make_maze(maze_dim)    
-        nsteps = utils.solve_maze(maze_dim, True)
+        utils.make_maze(maze_dim)   
+        utils.move_to(drone_pos[0][0], drone_pos[0][1])
+        nsteps = utils.solve_maze(maze_dim, 2, max_steps)
         if nsteps != None:
             quick_print(nsteps)        
     
     def drone_fun_follower(xy):
         utils.move_to(xy[0],xy[1])
-        nsteps = utils.solve_maze(maze_dim, True)
+        nsteps = utils.solve_maze(maze_dim, 1, max_steps)
         if nsteps != None:
             quick_print(nsteps)   
     
@@ -63,13 +66,8 @@ def do_maze_v2(nitr=1, maze_dim=None, ndrones=None):
         if ndrones == 1:
             drone_fun_master()
         else:
-            drone_pos = [(0,0), (maze_dim-1, maze_dim-1), (0, maze_dim-1), (maze_dim-1, 0)
-                       , ((1/2*maze_dim)//1, (1/4*maze_dim)//1), ((1/4*maze_dim)//1, (1/2*maze_dim)//1), ((1/2*maze_dim)//1, (3/4*maze_dim)//1), ((3/4*maze_dim)//1, (1/2*maze_dim)//1)
-                       , ((1/5*maze_dim)//1, (1/5*maze_dim)//1), ((4/5*maze_dim)//1, (1/5*maze_dim)//1), ((1/5*maze_dim)//1, (4/5*maze_dim)//1), ((4/5*maze_dim)//1, (4/5*maze_dim)//1)
-                       , ((1/2*maze_dim)//1, 0), (0, (1/2*maze_dim)//1), ((1/2*maze_dim)//1, maze_dim-1), (maze_dim-1, (1/2*maze_dim)//1)
-                       ]
-            for i in range(min(ndrones-1, len(drone_pos))):
-                spawn_drone(drone_fun_follower, drone_pos[i])
+            for i in range(len(drone_pos)-1):
+                spawn_drone(drone_fun_follower, drone_pos[i+1])
             drone_fun_master()
 
 def job_catcti():
@@ -119,7 +117,7 @@ def job_dinosaurs(nitr=1):
         move(East) # In case last position is apple, try to capture it
         change_hat(Hats.Brown_Hat) # Cash in
 
-def mixed_crop_v5():
+def mixed_crop_v5(do_fertalize=False):
     #"""! @brief Plant and harvest a field of [Grass, Carrot, Tree, Pumpkin]. Each time we plant, we try to next sow that plant's companion."""
     
     # coords_list_master = []
@@ -135,7 +133,7 @@ def mixed_crop_v5():
     def pumpkin_fun():
         pumpkin_problems = None
         while True:
-            pumpkin_problems = utils.plant_pumpkin_patch_once(0, 0, 6, pumpkin_problems)
+            pumpkin_problems = utils.plant_pumpkin_patch_once(0, 0, 6, pumpkin_problems, True, do_fertalize)
     def mixed_fun(possible_xy):
         
         utils.move_to((random()*get_world_size())//1, (random()*get_world_size())//1)
@@ -155,4 +153,20 @@ def mixed_crop_v5():
         idrone=spawn_drone(mixed_fun, coords_dict_master)
     
     pumpkin_fun()
-    
+
+def maze_sun():
+    power_last = num_items(Items.Power)
+    weird_last = num_items(Items.Weird_Substance)
+
+    while True:
+        set_world_size(32)
+        do_maze_v2(50)
+        
+        while (num_items(Items.Power) < power_last):
+            job_sunflowers(1)
+        power_last = num_items(Items.Power)
+        
+        pumpkin_problems = None
+        while (num_items(Items.Weird_Substance) < weird_last):
+            pumpkin_problems = utils.plant_pumpkin_patch_once(0, 0, 6, pumpkin_problems, True, True)
+        weird_last = num_items(Items.Weird_Substance)

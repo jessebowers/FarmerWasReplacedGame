@@ -84,16 +84,8 @@ def tree_is_adjacent():
     elif get_entity_type(East) == Entities.Tree:
         return True
     elif get_entity_type(West) == Entities.Tree:
-        return True
-
-def wait_for_drone_completion(drones=None):
-    #"""! @brief Wait until all spawned drones have finished thier tasks"""
-    if drones != None:
-        for idrone in drones:
-            wait_for(idrone)
-    else:
-        while num_drones() > 1:
-            pass
+        return True  
+    
 
 ###
 ### Pumpkins
@@ -141,7 +133,7 @@ def plant_pumpkin_patch_once(x0, y0, width, past_problem_locations=None, harvest
 ###
 
 
-def plant_sunflowers(water=True):
+def plant_sunflowers(water=True, fertalize=False):
     #"""! @brief Plant sunflowers everywhere.
     #@return List describing the location of sunflowers of different lengths. Each index indicates a petal length. Within each index is a list of (x,y) positions of sunflowers with that petal length.
     #@todo Limit this to a specified region rather than everywhere. A close grouping of 10 sunflowers is likely most efficient.
@@ -154,6 +146,8 @@ def plant_sunflowers(water=True):
         plant_this(Entities.Sunflower, Grounds.Soil)
         if water:
             do_water()
+        if fertalize:
+            use_item(Items.Fertilizer)
         all_petal_lengths[measure()] += [[get_pos_x(), get_pos_y()]]
         move_increment()
     
@@ -359,9 +353,10 @@ def make_maze(ndim=get_world_size()):
     plant_this(Entities.Bush)
     use_item(Items.Weird_Substance, qty)
 
-def solve_maze(maze_dim, check_entity=False, current_xy=None):
+def solve_maze(maze_dim, check_entity=0, max_steps=LARGE_NUMBER, current_xy=None):
     #"""! @brief Solve a maze. Does so by preferring the least traveled route. Ties are broken in direction of treasure.
-    #@param check_entity At each step validate the plant the drone is standing on. This slows the drone slightly. Important when multiple drones are solving to start/stop drones appropriately.
+    #@param check_entity At each step validate the plant the drone is standing on. This slows the drone slightly. Important when multiple drones are solving to start/stop drones appropriately. 0: No Validation. 1: Normal validation appropriate for spawns. 2: Quit on problem. Appropriate for Master.
+    #@param max_steps integer. Stop searching after a certain number of steps is reached. Sometimes the fastest option is to pause and start over!
     #@return Number of steps needed to solve maze. None if maze was not solved by this drone.
     #"""
 
@@ -370,13 +365,16 @@ def solve_maze(maze_dim, check_entity=False, current_xy=None):
     nvisits = {current_xy: 1}
     adjacency_dict = {}
     
-    if check_entity:
+    if check_entity>0:
         # Wait for maze to start
         while True:
             if get_entity_type() == Entities.Hedge:
                 break
             elif get_entity_type() == Entities.Treasure:
                 break
+            elif check_entity==2:
+                # No maze. Quit.
+                return None
     
     treasure_xy = measure()
     nsteps = 0
@@ -386,7 +384,7 @@ def solve_maze(maze_dim, check_entity=False, current_xy=None):
         current_xy = move_once(current_xy, adjacency_current, nvisits, adjacency_dict)
         current_xy = current_xy
         
-        if check_entity:
+        if check_entity>0:
             # Quit if a different drone finished the maze
             ientity = get_entity_type()
             if ientity == Entities.Treasure:
@@ -394,7 +392,8 @@ def solve_maze(maze_dim, check_entity=False, current_xy=None):
             elif ientity != Entities.Hedge:
                 # Can occur if a different drone solves the maze
                 break
-    
+        if nsteps > max_steps:
+            break
     success = False        
     if get_entity_type() == Entities.Treasure:
         harvest()
@@ -411,7 +410,7 @@ def get_adj_key(x,y):
         return (y,x)
 
 def get_all_adj(current_xy, treasure_xy, maze_dim, nvisits, adjacency_dict):
-    #"""! @brief From the current location, get information on each cardinal direction.
+    #"""! @brief From the current location, get information on each cardinal direction. Updates adjacency_dict appropriately.
     #@param current_xy Tuple of current drone location
     #@param treasure_xy Tuple of treasure location
     #@param maze_dim Width/length of maze.
@@ -429,16 +428,25 @@ def get_all_adj(current_xy, treasure_xy, maze_dim, nvisits, adjacency_dict):
         , {'direction': West, 'new_xy': tuple(array_add(current_xy, DIRECTION_TO_TUPLE[West]))}
         ]
     for i in range(len(all_adj)):
-                
+        
+        adj_key = get_adj_key(current_xy,all_adj[i]['new_xy'])
+        if adj_key not in adjacency_dict:
+            adjacency_dict[adj_key] = can_move(all_adj[i]['direction'])
+        
         if dict_get(adjacency_dict, get_adj_key(current_xy,all_adj[i]['new_xy']),-1) == 0:
+            # Cannot move here, bocked
             all_adj[i]['nvisits'] = LARGE_NUMBER
         elif all_adj[i]['new_xy'][0] < 0:
+            # Cannot move here, edge of map
             all_adj[i]['nvisits'] = LARGE_NUMBER
         elif all_adj[i]['new_xy'][1] < 0:
+            # Cannot move here, edge of map
             all_adj[i]['nvisits'] = LARGE_NUMBER
         elif all_adj[i]['new_xy'][0] >= maze_dim:
+            # Cannot move here, edge of map
             all_adj[i]['nvisits'] = LARGE_NUMBER
         elif all_adj[i]['new_xy'][1] >= maze_dim:
+            # Cannot move here, edge of map
             all_adj[i]['nvisits'] = LARGE_NUMBER
         else:
             all_adj[i]['nvisits'] = dict_get(nvisits, all_adj[i]['new_xy'],0)
@@ -578,12 +586,106 @@ def get_apple(xy, tail_length, snake_start):
             xy0[1] += -1
         
         return new_apple_xy
+
         
+###
+### Multi-drone helpers
+###
+
+
+def wait_for_drone_completion(drones=None):
+    #"""! @brief Wait until all spawned drones have finished thier tasks"""
+    if drones != None:
+        for idrone in drones:
+            wait_for(idrone)
+    else:
+        while num_drones() > 1:
+            pass
+
+def dispersed_locations(ndrones, dim, method=None, kwargs={}):
+    #"""! @brief Chose positions for drones which are far apart. First output is closest to (dim//2,dim//2)"""
+    
+    if method != None:
+        pass
+    elif (ndrones==32) and (dim==32):
+        method = 'korobov_rank1_lattice'
+    elif (ndrones==32) and (dim==8):
+        method = 'every_other'
+    elif ndrones <= 17:
+        method = 'fixed'
+    else:
+        method = 'random'
+    
+    drone_pos = []
+    if method == 'fixed':
+        # Fixed hand chosen choices, up to 17 drones
+        drone_pos_fixed = [(dim//2, dim//2), (0,0), (dim-1, dim-1), (0, dim-1), (dim-1, 0), ((1/2*dim)//1, (1/4*dim)//1), ((1/4*dim)//1, (1/2*dim)//1), ((1/2*dim)//1, (3/4*dim)//1), ((3/4*dim)//1, (1/2*dim)//1), ((1/5*dim)//1, (1/5*dim)//1), ((4/5*dim)//1, (1/5*dim)//1), ((1/5*dim)//1, (4/5*dim)//1), ((4/5*dim)//1, (4/5*dim)//1), ((1/2*dim)//1, 0), (0, (1/2*dim)//1), ((1/2*dim)//1, dim-1), (dim-1, (1/2*dim)//1)]
+        drone_pos = drone_pos_fixed[:ndrones]
+    elif method=='korobov_rank1_lattice':
+        drone_pos = korobov_rank1_lattice(ndrones, dim, dict_get(kwargs, 'generator',13))
+    elif method == 'x':
+        # Drones form X on map with no two drones in the same row/column.
+        drone_pos = []
+        for i in range(ndrones):
+            if i % 2 == 0:
+                drone_pos.append((i, i))
+            else:
+                drone_pos.append((ndrones-i, i))
+        for i in range(len(drone_pos)):
+            drone_pos[i] = ( (drone_pos[i][0] * dim/ndrones)//1, (drone_pos[i][1] * dim/ndrones)//1 )
+            
+    elif method == 'every_other':
+        for x in range(dim):
+            for y in range(dim):
+                if (x+y) % 2 == 0:
+                    drone_pos.append((x,y))
+                
+                if len(drone_pos) >= ndrones:
+                    break
+            
+            if len(drone_pos) >= ndrones:
+                break
+    
+    # Random backfill (or everything when method == 'random')
+    if len(drone_pos) < ndrones:
+        drone_pos_dict = {}
+        for ipos in drone_pos:
+            drone_pos_dict[ipos] = 1
+        for i in range(ndrones-len(drone_pos)):
+            ipos = ((random()*dim)//1, (random()*dim)//1)
+            if ipos not in drone_pos:
+                drone_pos_dict[ipos] = 1
+                drone_pos.append(ipos)
         
+
+    # Move (dim//2,dim//2) or nearest to first element.
+    closest_ind = 0
+    closest_dist = LARGE_NUMBER
+    for i in range(len(drone_pos)):
+        idist = dist_manhattan(drone_pos[i],(dim//2,dim//2))
+        if idist < closest_dist:
+            closest_ind = i
+            closest_dist = idist
+            if closest_dist == 0:
+                break
+    list_move(drone_pos, closest_ind, 0)
+    
+    return drone_pos
+
+def korobov_rank1_lattice(ndrones, ndim, generator, ndims=2):
+    drone_pos = []
+    for i in range(ndrones):
+        drone_pos.append([])
+        for j in range(ndims):
+            drone_pos[i].append( (generator**j * i) % ndim )
+    
+    return drone_pos
+
 
 ###
 ### General Looping
 ###
+
 
 def loop_coords(coords_list, fun, out_init=None):
     #"""! @brief For each xy in coords_list, apply fun().
